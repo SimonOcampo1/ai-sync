@@ -34,3 +34,9 @@ npm run typecheck      # tsc --noEmit
 - Git operations use explicit file paths, never `git add .`
 - Allowlist-based sync: only files in `DEFAULT_SYNC_TARGETS` / `PLUGIN_SYNC_PATTERNS` are synced
 - Path rewriting: absolute paths ↔ `{{HOME}}` tokens for cross-platform portability
+
+## Workflow
+
+- Always use autospec for multi-step feature work: `/autospec-define` to brainstorm and decompose into linked GitHub issues, then `/autospec-run` for autonomous implementation with auto-merge.
+- For an existing tracked design spec, use `/autospec-split` then `/autospec-run`.
+- Single-task or bug-fix work that doesn't warrant a full spec can use `/turboplan` or `/implement` directly.
