@@ -38,19 +38,43 @@ ask_star() {
 
 # Read user input — works even when script is piped via curl | bash
 # Returns the value via stdout; caller captures with $()
+# Honors AI_SYNC_NONINTERACTIVE=1 and AI_SYNC_ENV / AI_SYNC_REPO_NAME / AI_SYNC_REPO_VISIBILITY overrides
 prompt() {
   local msg="$1" default="$2" reply=""
-  if [ ! -e /dev/tty ]; then
-    # No tty available (headless/Docker) — use default silently
+
+  # Non-interactive mode: always use default
+  if [ "${AI_SYNC_NONINTERACTIVE:-0}" = "1" ]; then
     echo "$default"
     return
   fi
-  if [ -n "$default" ]; then
-    printf '%s [%s]: ' "$msg" "$default" >/dev/tty
+
+  # Try /dev/tty first (POSIX), then fall back to stdin if it's a TTY (Git Bash on Windows
+  # has /dev/tty but reads from it can hang). If neither works, use the default.
+  local input_src=""
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    input_src="/dev/tty"
+  elif [ -t 0 ]; then
+    input_src="/dev/stdin"
   else
-    printf '%s: ' "$msg" >/dev/tty
+    # No interactive input available — use default silently
+    echo "$default"
+    return
   fi
-  read -r reply </dev/tty || true
+
+  if [ -n "$default" ]; then
+    printf '%s [%s]: ' "$msg" "$default" > /dev/stderr
+  else
+    printf '%s: ' "$msg" > /dev/stderr
+  fi
+
+  # Use read with a timeout fallback on systems where /dev/tty is broken (e.g. some Git Bash setups).
+  # AI_SYNC_PROMPT_TIMEOUT (seconds) — defaults to no timeout for normal interactive sessions.
+  if [ -n "${AI_SYNC_PROMPT_TIMEOUT:-}" ]; then
+    read -r -t "$AI_SYNC_PROMPT_TIMEOUT" reply < "$input_src" || reply=""
+  else
+    read -r reply < "$input_src" || reply=""
+  fi
+
   if [ -z "$reply" ]; then
     echo "$default"
   else
@@ -300,16 +324,24 @@ AI_SYNC="node $INSTALL_DIR/dist/cli.js"
 info "Which environments do you want to sync?"
 echo "  1) Claude Code only (default)"
 echo "  2) OpenCode only"
-echo "  3) Both Claude Code and OpenCode"
+echo "  3) Codex only"
+echo "  4) Antigravity only"
+echo "  5) Auto-detect all installed tools"
+echo "  6) Claude Code + OpenCode"
 ENV_CHOICE=$(prompt "Choose" "1")
 
 case "$ENV_CHOICE" in
   1) echo '["claude"]' > "$INSTALL_DIR/.environments.json" ;;
   2) echo '["opencode"]' > "$INSTALL_DIR/.environments.json" ;;
-  3) echo '["claude","opencode"]' > "$INSTALL_DIR/.environments.json" ;;
+  3) echo '["codex"]' > "$INSTALL_DIR/.environments.json" ;;
+  4) echo '["antigravity"]' > "$INSTALL_DIR/.environments.json" ;;
+  5) rm -f "$INSTALL_DIR/.environments.json" ;;
+  6) echo '["claude","opencode"]' > "$INSTALL_DIR/.environments.json" ;;
   *) warn "Invalid choice '$ENV_CHOICE', using Claude Code only"
      echo '["claude"]' > "$INSTALL_DIR/.environments.json" ;;
 esac
+echo ""
+info "You can change this later with: ai-sync env enable <claude|codex|opencode|antigravity>"
 
 # Install slash commands (e.g., /sync)
 info "Installing slash command skills..."
